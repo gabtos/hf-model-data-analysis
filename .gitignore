@@ -1,0 +1,10 @@
+# Environment variables
+.env
+.env.local
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
