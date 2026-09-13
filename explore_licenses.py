@@ -42,6 +42,12 @@ small fraction of that budget. A prior *unbounded* full-Hub enumeration
 attempt did trip the 429 after several hundred thousand records — so this
 script caps itself with SAMPLE_SIZE rather than trying to walk the entire
 Hub in one go.
+
+2026-09-14: verified 300,000 records (expand=downloadsAllTime/tags/
+cardData, sort=created_at) completes cleanly in ~41s with no 429 --
+bumped SAMPLE_SIZE from 50,000 to 300,000 on that basis. Not pushed
+further than that in this run; see EXPLORATION_NOTES.md for the full
+changelog of what changed and why.
 """
 
 import json
@@ -53,7 +59,7 @@ from huggingface_hub import HfApi
 
 # %% Configuration
 
-SAMPLE_SIZE = 50_000  # exploratory cross-section, not the full Hub
+SAMPLE_SIZE = 300_000  # exploratory cross-section, not the full Hub (verified stable, see docstring)
 SORT = "created_at"   # avoid the default trending-score bias
 OUT_PATH = "raw_data/license_exploration_sample.jsonl"
 EXPAND_FIELDS = ["downloadsAllTime", "tags", "cardData", "createdAt"]
@@ -257,9 +263,10 @@ def main():
             dl = model.downloads_all_time or 0
             well_known = is_well_known_license(lic)
             copyleft_class = classify_permissive_copyleft(lic)
+            osd_class = classify_license(lic)
 
             license_counter[lic] += 1
-            class_counter[classify_license(lic)] += 1
+            class_counter[osd_class] += 1
             well_known_counter["WELL_KNOWN" if well_known else "CUSTOM_OR_UNRECOGNIZED"] += 1
             copyleft_counter[copyleft_class] += 1
             downloads.append(dl)
@@ -269,6 +276,7 @@ def main():
                 "license": lic,
                 "is_well_known_license": well_known,
                 "permissive_or_copyleft": copyleft_class,
+                "osd_classification": osd_class,
                 "downloads_all_time": dl,
                 "created_at": model.created_at.isoformat() if model.created_at else None,
             }, ensure_ascii=False) + "\n")
