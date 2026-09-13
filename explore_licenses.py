@@ -45,9 +45,13 @@ Hub in one go.
 
 2026-09-14: verified 300,000 records (expand=downloadsAllTime/tags/
 cardData, sort=created_at) completes cleanly in ~41s with no 429 --
-bumped SAMPLE_SIZE from 50,000 to 300,000 on that basis. Not pushed
-further than that in this run; see EXPLORATION_NOTES.md for the full
-changelog of what changed and why.
+bumped SAMPLE_SIZE from 50,000 to 300,000 on that basis. See
+EXPLORATION_NOTES.md for the full changelog of what changed and why.
+
+2026-09-14 (later): SAMPLE_SIZE set to 100,000 per team decision --
+still 2x the original 50k cross-section, and keeps the committed sample
+file smaller than 300k's ~80MB (which was past GitHub's 50MB warning
+threshold).
 """
 
 import json
@@ -59,7 +63,7 @@ from huggingface_hub import HfApi
 
 # %% Configuration
 
-SAMPLE_SIZE = 300_000  # exploratory cross-section, not the full Hub (verified stable, see docstring)
+SAMPLE_SIZE = 100_000  # exploratory cross-section, not the full Hub (verified stable, see docstring)
 SORT = "created_at"   # avoid the default trending-score bias
 OUT_PATH = "raw_data/license_exploration_sample.jsonl"
 EXPAND_FIELDS = ["downloadsAllTime", "tags", "cardData", "createdAt"]

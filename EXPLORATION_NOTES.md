@@ -112,3 +112,16 @@ flagging before treating percentages as Hub-wide truth.
 - Fixed a `.gitignore` bug from the prior run (2026-09-13): an `echo >>`
   had appended onto the file's last line with no trailing newline,
   silently merging two ignore patterns into one broken glob.
+
+### 2026-09-14 (later): sample size set to 100,000
+
+- `SAMPLE_SIZE` set to 100,000 (down from the 300,000 tested earlier the
+  same day). Committed sample file is now ~24MB (was ~71MB at 300k),
+  comfortably under GitHub's 50MB warning threshold.
+- Numbers at 100k are consistent with both the 50k and 300k runs: no
+  resolvable license 55.6%, well-known 35.0%, permissive 36.3% vs.
+  combined copyleft 0.3% — the distribution is stable across sample
+  sizes, which is itself evidence 100k is large enough for this
+  characterization pass.
+- `raw_data/license_exploration_sample.jsonl` regenerated at 100k and
+  committed, replacing the 300k version.
