@@ -76,6 +76,43 @@ OSI_APPROVED = {
     "ncsa", "osl-3.0", "postgresql", "python-2.0", "0bsd",
 }
 
+# The subset of OSI_APPROVED that is not just OSI-listed but genuinely
+# well-known and institutionally backed -- maintained/stewarded by a named
+# org (ASF, FSF, Google/OSI dual-stewarded MIT/BSD forms, Mozilla, academic
+# consortia for the EU-origin ones) and seen constantly in the wild outside
+# of HF too. This is the "easy to distinguish" bucket: if the SPDX id is in
+# here, near-zero ambiguity about what it grants. Anything not in this set
+# -- including rarer OSI-approved ids, "other", missing, or one-off custom
+# strings -- gets marked CUSTOM below and should get a human look before
+# being treated as equivalent.
+WELL_KNOWN_LICENSES = {
+    "apache-2.0",   # Apache Software Foundation
+    "mit",          # MIT
+    "bsd-3-clause", # BSD/Regents of UC
+    "bsd-2-clause",
+    "gpl-3.0",      # FSF
+    "gpl-2.0",
+    "lgpl-3.0",
+    "lgpl-2.1",
+    "agpl-3.0",
+    "mpl-2.0",      # Mozilla
+    "cc0-1.0",      # Creative Commons (public-domain dedication, not a
+                     # software copyleft/permissive license, but widely
+                     # recognized and unambiguous)
+    "unlicense",
+    "isc",
+}
+
+
+def is_well_known_license(license_name):
+    """True only for the small, unambiguous set above. Everything else --
+    rarer OSI-approved ids, HF's literal 'other', missing licenses, and
+    AI-specific custom licenses -- is treated as CUSTOM and needs a human
+    look rather than being auto-trusted."""
+    if license_name is None:
+        return False
+    return str(license_name).strip().lower() in WELL_KNOWN_LICENSES
+
 # Common HF/AI-specific license tags that carry field-of-use, non-commercial,
 # or redistribution restrictions and therefore fail OSD #5/#6 (no
 # discrimination against persons or fields of endeavor) even though HF
@@ -165,6 +202,7 @@ def main():
     records = []
     license_counter = Counter()
     class_counter = Counter()
+    well_known_counter = Counter()
     downloads = []
 
     with open(OUT_PATH, "w", encoding="utf-8") as f:
@@ -175,14 +213,17 @@ def main():
             card_data = card_data_to_dict(model.card_data)
             lic = resolve_license(card_data, tags)
             dl = model.downloads_all_time or 0
+            well_known = is_well_known_license(lic)
 
             license_counter[lic] += 1
             class_counter[classify_license(lic)] += 1
+            well_known_counter["WELL_KNOWN" if well_known else "CUSTOM_OR_UNRECOGNIZED"] += 1
             downloads.append(dl)
 
             f.write(json.dumps({
                 "id": model.id,
                 "license": lic,
+                "is_well_known_license": well_known,
                 "downloads_all_time": dl,
                 "created_at": model.created_at.isoformat() if model.created_at else None,
             }, ensure_ascii=False) + "\n")
@@ -221,6 +262,14 @@ def main():
     for lic, cnt in license_counter.most_common(30):
         label = lic if lic is not None else "<NONE>"
         print(f"    {label:<35} {cnt:>7,}  ({cnt/n:.1%})")
+
+    print()
+    print("=" * 60)
+    print("WELL-KNOWN vs. CUSTOM/UNRECOGNIZED (simple two-way split)")
+    print("=" * 60)
+    print(f"  Well-known set: {sorted(WELL_KNOWN_LICENSES)}")
+    for cls, cnt in well_known_counter.most_common():
+        print(f"    {cls:<28} {cnt:>7,}  ({cnt/n:.1%})")
 
     print()
     print("=" * 60)
