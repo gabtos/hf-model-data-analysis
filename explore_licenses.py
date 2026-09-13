@@ -133,6 +133,47 @@ CC_OPEN_ISH = {"cc-by-4.0", "cc-by-3.0", "cc-by-2.0", "cc-by-sa-4.0", "cc-by-sa-
 # software licenses -- flagged separately as "permissive but not an
 # OSI-approved *software* license" rather than lumped into OSI_APPROVED.
 
+# Permissive vs. copyleft is a separate axis from "well-known" or
+# "OSI-approved" -- e.g. MIT and GPL-3.0 are both well-known+OSI-approved,
+# but one imposes no share-alike obligation and the other does. Split into
+# weak copyleft (file/library-level share-alike: LGPL, MPL, EPL) and strong
+# copyleft (whole-work share-alike: GPL, AGPL) since that distinction
+# matters a lot for anyone downstream considering redistribution/combination.
+# CC-BY-SA is included as "weak" copyleft-for-content (share-alike on
+# derivatives) even though it's not a software license.
+PERMISSIVE_LICENSES = {
+    "apache-2.0", "mit", "bsd-3-clause", "bsd-2-clause", "bsd-3-clause-clear",
+    "cc0-1.0", "unlicense", "isc", "wtfpl", "zlib", "afl-3.0", "artistic-2.0",
+    "bsl-1.0", "ecl-2.0", "ncsa", "postgresql", "python-2.0", "0bsd",
+    "cc-by-4.0", "cc-by-3.0", "cc-by-2.0",
+}
+WEAK_COPYLEFT_LICENSES = {
+    "lgpl-3.0", "lgpl-2.1", "mpl-2.0", "epl-1.0", "epl-2.0",
+    "eupl-1.1", "eupl-1.2", "cc-by-sa-4.0", "cc-by-sa-3.0",
+}
+STRONG_COPYLEFT_LICENSES = {
+    "gpl-3.0", "gpl-2.0", "agpl-3.0", "osl-3.0",
+}
+
+
+def classify_permissive_copyleft(license_name):
+    """Permissive vs. copyleft is only a meaningful axis for licenses that
+    actually grant redistribution/modification rights in the first place.
+    Missing licenses, 'other', and AI-specific custom licenses (Llama,
+    Gemma, OpenRAIL, CC-NC) get NOT_APPLICABLE -- they're not classic
+    permissive/copyleft software licenses, and lumping them in either
+    bucket would be misleading rather than merely imprecise."""
+    if license_name is None:
+        return "NOT_APPLICABLE"
+    key = str(license_name).strip().lower()
+    if key in PERMISSIVE_LICENSES:
+        return "PERMISSIVE"
+    if key in WEAK_COPYLEFT_LICENSES:
+        return "COPYLEFT_WEAK"
+    if key in STRONG_COPYLEFT_LICENSES:
+        return "COPYLEFT_STRONG"
+    return "NOT_APPLICABLE"
+
 
 def card_data_to_dict(card_data):
     if card_data is None:
@@ -203,6 +244,7 @@ def main():
     license_counter = Counter()
     class_counter = Counter()
     well_known_counter = Counter()
+    copyleft_counter = Counter()
     downloads = []
 
     with open(OUT_PATH, "w", encoding="utf-8") as f:
@@ -214,16 +256,19 @@ def main():
             lic = resolve_license(card_data, tags)
             dl = model.downloads_all_time or 0
             well_known = is_well_known_license(lic)
+            copyleft_class = classify_permissive_copyleft(lic)
 
             license_counter[lic] += 1
             class_counter[classify_license(lic)] += 1
             well_known_counter["WELL_KNOWN" if well_known else "CUSTOM_OR_UNRECOGNIZED"] += 1
+            copyleft_counter[copyleft_class] += 1
             downloads.append(dl)
 
             f.write(json.dumps({
                 "id": model.id,
                 "license": lic,
                 "is_well_known_license": well_known,
+                "permissive_or_copyleft": copyleft_class,
                 "downloads_all_time": dl,
                 "created_at": model.created_at.isoformat() if model.created_at else None,
             }, ensure_ascii=False) + "\n")
@@ -270,6 +315,16 @@ def main():
     print(f"  Well-known set: {sorted(WELL_KNOWN_LICENSES)}")
     for cls, cnt in well_known_counter.most_common():
         print(f"    {cls:<28} {cnt:>7,}  ({cnt/n:.1%})")
+
+    print()
+    print("=" * 60)
+    print("PERMISSIVE vs. COPYLEFT")
+    print("=" * 60)
+    for cls, cnt in copyleft_counter.most_common():
+        print(f"    {cls:<20} {cnt:>7,}  ({cnt/n:.1%})")
+    print("  (NOT_APPLICABLE = no license, 'other', or a non-classic-OSS custom")
+    print("   license like Llama/Gemma/OpenRAIL/CC-NC -- permissive/copyleft isn't")
+    print("   a meaningful axis for those.)")
 
     print()
     print("=" * 60)
