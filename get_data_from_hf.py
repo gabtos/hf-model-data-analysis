@@ -2,6 +2,7 @@ import json
 import os
 import time
 
+from datetime import datetime
 from huggingface_hub import HfApi
 from huggingface_hub.errors import HfHubHTTPError
 
@@ -36,10 +37,11 @@ You will have to restart VS code after setting the variable for it to take effec
 
 # Search
 QUERY = None                 # None = all models; e.g. "open" to search by string
-LIMIT = 5                 # None = no limit
+LIMIT = 1_000                 # None = no limit
 
 # Output
-OUT_JSONL = "raw_data/hf_models.jsonl"
+DATE = datetime.now().strftime("%m_%d_%y")
+OUT_JSONL = f"raw_data/hf_models_{DATE}.jsonl"
 
 # Authentication
 HF_TOKEN = os.getenv("HF_TOKEN")
