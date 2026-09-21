@@ -42,24 +42,29 @@ def license_resolver(model, hf_token=None):
     Determines the best license name and link using a 3-tier system.
     """
     
-    # Initial values
+    # Initial values from the model metadata
     current_license = model.get('license', 'unknown')
     current_link = model.get('license_link', None)
 
     # Tier 1: If the license is already good, just return it
     ambiguous_licenses = {'unknown', 'other', 'none', None, "null"}
-    if current_license not in ambiguous_licenses:
-        return current_license, current_link
+    try:
+        if current_license not in ambiguous_licenses:
+            return current_license, current_link
+
+    #fail gracefully if license is not a string or is malformed, and print the model id for debugging
+    except:
+        print(f"Error processing model {model.get('id')}: {model}")
     
     # if current_license in ambiguous_licenses:
     #     print(model.get('id'), "has ambiguous license:", current_license)
 
-    # # Tier 2: Check tags if license is ambiguous
-    # tags = model.get('tags', [])
-    # for tag in tags:
-    #     if tag.startswith('license:'):
-    #         current_license = tag.split(':', 1)[1]
-    #         break
+    # Tier 2: Check tags if license is ambiguous
+    tags = model.get('tags', [])
+    for tag in tags:
+        if tag.startswith('license:'):
+            current_license = tag.split(':', 1)[1]
+            break
 
     # Tier 3: If still ambiguous, hit the Hugging Face API
     if current_license in ambiguous_licenses:
@@ -96,6 +101,12 @@ def process_full_dataset(input_file, cleaned_file, unresolved_file, hf_token=Non
             if not line.strip(): continue
             
             model = json.loads(line)
+
+            #check if the model id exists in the cleaned file already and skip it, saving API calls and processing time
+            with open(cleaned_file, 'r', encoding='utf-8') as f_check:
+                if any(model.get('id') == json.loads(existing_line).get('id') for existing_line in f_check):
+                    print(f"Skipping {model.get('id')} as it already exists in the cleaned file.")
+                    continue
             
             # Resolve the license and link
             resolved_name, resolved_link = license_resolver(model, hf_token)
@@ -127,7 +138,7 @@ def process_full_dataset(input_file, cleaned_file, unresolved_file, hf_token=Non
 
 if __name__ == "__main__":
     # --- Configuration ---
-    INPUT_FILE = 'raw_data/hf_models_09_15_26.jsonl'
+    INPUT_FILE = 'raw_data/hf_models_09_21_26.jsonl'
     CLEANED_FILE = 'clean_license_data/clean_licenses.jsonl'
     UNRESOLVED_FILE = 'clean_license_data/unresolved_licenses.jsonl'
     HF_TOKEN = os.getenv("HF_TOKEN") 

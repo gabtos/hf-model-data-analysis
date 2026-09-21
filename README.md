@@ -1,5 +1,7 @@
 # hf-model-data-analysis
 A pipeline for downloading and analyzing model matada from Hugging Face
+The current version only looks at models with more than 100 downloads.
+
 
 
 # TODO
