@@ -37,7 +37,7 @@ You will have to restart VS code after setting the variable for it to take effec
 
 # Search
 QUERY = None                 # None = all models; e.g. "open" to search by string
-LIMIT = 1_000                 # None = no limit
+LIMIT = 300_000                 # None = no limit
 
 # Output
 DATE = datetime.now().strftime("%m_%d_%y")
@@ -168,6 +168,9 @@ def download_models():
                         "tags": tags,
                         "card_data": card_data,
                     }
+                    #don't save models with less than 100 downloads
+                    if record["downloads_all_time"] is not None and record["downloads_all_time"] < 100:
+                        continue
 
                     f.write(
                         json.dumps(record, ensure_ascii=False)
