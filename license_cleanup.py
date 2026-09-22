@@ -138,7 +138,8 @@ def process_full_dataset(input_file, cleaned_file, unresolved_file, hf_token=Non
 
 if __name__ == "__main__":
     # --- Configuration ---
-    INPUT_FILE = 'raw_data/hf_models_09_21_26.jsonl'
+    #TODO cleanup to make sure it's more robust/reusable/repeatble
+    INPUT_FILE = 'raw_data/hf_models_09_21_26.jsonl' #the latest raw data
     CLEANED_FILE = 'clean_license_data/clean_licenses.jsonl'
     UNRESOLVED_FILE = 'clean_license_data/unresolved_licenses.jsonl'
     HF_TOKEN = os.getenv("HF_TOKEN") 
