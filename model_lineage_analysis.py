@@ -199,13 +199,21 @@ def load_models() -> pd.DataFrame:
     return models, downloads
 
 
+def sort_desc(obj, by=None):
+    """Sort descending with ties broken by the index (e.g. model id or org), so reruns give identical files."""
+    obj = obj.sort_index()
+    if by is None:
+        return obj.sort_values(ascending=False, kind="mergesort")
+    return obj.sort_values(by, ascending=False, kind="mergesort")
+
+
 def read_csv_str(path) -> pd.DataFrame:
     return pd.read_csv(path, dtype=str, keep_default_na=False)
 
 
 def eci_gaps() -> pd.DataFrame:
     """Each ECI model's gap to the best model released on or before its release date."""
-    e = pd.read_csv(ECI_SNAPSHOT_CSV, parse_dates=["release_date"]).sort_values(["release_date", "eci"])
+    e = pd.read_csv(ECI_SNAPSHOT_CSV, parse_dates=["release_date"]).sort_values(["release_date", "eci", "model"])
     e["sota_at_release"] = e["eci"].cummax()
     e["gap_to_frontier"] = e["sota_at_release"] - e["eci"]
     return e
@@ -218,7 +226,7 @@ def classify_frontier(orgs: pd.DataFrame) -> pd.DataFrame:
     orgs = orgs.copy()
     cap, ev = [], []
     for org, names in orgs["eci_organization"].items():
-        m = e[e["org"].isin([n for n in names.split(";") if n])].sort_values("gap_to_frontier")
+        m = e[e["org"].isin([n for n in names.split(";") if n])].sort_values(["gap_to_frontier", "release_date", "model"])  # ties -> earliest model
         if len(m):
             b = m.iloc[0]
             cap.append("y" if b["gap_to_frontier"] <= CAPABILITY_GAP_ECI else "n")
@@ -335,7 +343,7 @@ def add_roots(models: pd.DataFrame) -> pd.DataFrame:
 
 # %% Q1: the top-313
 def top_models_table(models, downloads, attr):
-    top = downloads.sort_values(ascending=False).head(TOP_N)
+    top = sort_desc(downloads).head(TOP_N)
     t = pd.DataFrame({"id": top.index, "downloads": top.values})
     t["rank"] = np.arange(1, len(t) + 1)
     t["publisher"] = t["id"].map(publisher_of)
@@ -598,7 +606,7 @@ def run(verbose: bool = True) -> dict:
     co_tab["group"] = co_tab.index.map(attr.company_group)
     co_tab = co_tab.join(orgs[["listing", "market_cap_usd_bn", "big_tech", "capability_frontier", "compute_frontier",
                                   "frontier", "hq_country"]], how="left")
-    co_tab.sort_values("derivatives", ascending=False).to_csv(f"{OUT_DIR}/derivatives_by_company.csv")
+    sort_desc(co_tab, "derivatives").to_csv(f"{OUT_DIR}/derivatives_by_company.csv")
 
     # How much of the ecosystem's *own uploads* do these publishers account for?
     models["type"] = attr.type(models["id"])
@@ -610,19 +618,18 @@ def run(verbose: bool = True) -> dict:
     say("\nOwn uploads vs. downstream reach:\n" + reach.to_string())
 
     by_org = (kids.groupby("root_org").agg(derivatives=("id", "size"), derivative_downloads=("downloads", "sum"))
-              .sort_values("derivatives", ascending=False))
+              .pipe(sort_desc, "derivatives"))
     by_org.head(50).to_csv(f"{OUT_DIR}/derivatives_by_root_org_top50.csv")
 
     roots = kids.groupby("root").agg(n_derivatives=("id", "size"), derivative_downloads=("downloads", "sum"),
                                      top_relation=("relation", lambda s: s.value_counts().index[0]))
     roots["publisher"] = roots.index.map(publisher_of)
     roots["publisher_type"] = attr.type(roots.index.to_series())
-    roots = roots.sort_values("n_derivatives", ascending=False)
+    roots = sort_desc(roots, "n_derivatives")
     roots.head(100).to_csv(f"{OUT_DIR}/top100_root_models.csv")
 
     fig_lineage_flow(kids.assign(root_type=for_figure(kids["root_type"]), child_type=for_figure(kids["child_type"])), f"{OUT_DIR}/fig2_lineage_flow.png")
     fig_top_roots(roots.assign(publisher_type=for_figure(roots["publisher_type"])), f"{OUT_DIR}/fig3_top_root_models.png")
-    say(f"\nWrote outputs to {OUT_DIR}/")
     # Total footprint: a group's OWN models plus every derivative traced back to its models,
     # as a share of ALL Hub downloads (all ~3.1M models in the downloads file).
     fp_group, fp_company, fp_total = total_footprint(downloads, kids, attr, orgs)
@@ -635,7 +642,7 @@ def run(verbose: bool = True) -> dict:
     say(f"\nWrote outputs to {OUT_DIR}/")
     return {"models": models, "top": top, "top_by_type": q1, "kids": kids, "by_type": by_type,
             "baseline": baseline, "effect": effect, "per_test": pd.DataFrame(per_test).T,
-            "companies": co_tab.sort_values("derivatives", ascending=False), "reach": reach,
+            "companies": sort_desc(co_tab, "derivatives"), "reach": reach,
             "by_org": by_org, "roots": roots, "orgs": orgs,
             "footprint_by_group": fp_group, "footprint_by_company": fp_company, "hub_downloads": fp_total}
 
@@ -667,7 +674,7 @@ def total_footprint(downloads: pd.Series, kids: pd.DataFrame, attr: "Attribution
     fc = pd.DataFrame({org: row(hub["owner_org"] == org, hub["root_org"] == org) for org in orgs.index}).T
     fc["share_of_all_hub_downloads"] = fc["total_footprint"] / total
     fc["group"] = [attr.company_group(o) for o in fc.index]
-    fc = fc.sort_values("total_footprint", ascending=False)
+    fc = sort_desc(fc, "total_footprint")
     return fg, fc, total
 
 
