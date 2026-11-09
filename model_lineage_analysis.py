@@ -301,6 +301,20 @@ class Attribution:
     def org(self, model_ids: pd.Series) -> pd.Series:
         return model_ids.map(lambda m: self._one(m, "org"))
 
+    def type_and_org_many(self, model_ids: pd.Series) -> tuple[pd.Series, pd.Series]:
+        """Fast path for millions of ids: resolve once per publisher, then apply model-level overrides."""
+        pubs = model_ids.map(publisher_of)
+        types, orgs = {}, {}
+        for p in pubs.unique():
+            probe = f"{p}/\0"  # an id no model-level override can match, so only account rules apply
+            orgs[p] = self._one(probe, "org")
+            types[p] = self._type(probe)
+        t, o = pubs.map(types), pubs.map(orgs)
+        hit = model_ids.isin(self.by_model.index)
+        t[hit] = model_ids[hit].map(self._type)
+        o[hit] = model_ids[hit].map(lambda m: self._one(m, "org"))
+        return t, o
+
 
 # %% Root resolution: follow declared parents up to the top of the chain
 def add_roots(models: pd.DataFrame) -> pd.DataFrame:
@@ -609,10 +623,52 @@ def run(verbose: bool = True) -> dict:
     fig_lineage_flow(kids.assign(root_type=for_figure(kids["root_type"]), child_type=for_figure(kids["child_type"])), f"{OUT_DIR}/fig2_lineage_flow.png")
     fig_top_roots(roots.assign(publisher_type=for_figure(roots["publisher_type"])), f"{OUT_DIR}/fig3_top_root_models.png")
     say(f"\nWrote outputs to {OUT_DIR}/")
+    # Total footprint: a group's OWN models plus every derivative traced back to its models,
+    # as a share of ALL Hub downloads (all ~3.1M models in the downloads file).
+    fp_group, fp_company, fp_total = total_footprint(downloads, kids, attr, orgs)
+    fp_group.to_csv(f"{OUT_DIR}/footprint_by_group.csv")
+    fp_company.to_csv(f"{OUT_DIR}/footprint_by_company.csv")
+    say(f"\nTotal footprint (own models + all derivatives), share of ALL {fp_total / 1e9:,.1f}B Hub downloads:\n"
+        + fp_group[["own_model_downloads", "derivative_downloads_not_own", "total_footprint",
+                    "share_of_all_hub_downloads"]].to_string())
+
+    say(f"\nWrote outputs to {OUT_DIR}/")
     return {"models": models, "top": top, "top_by_type": q1, "kids": kids, "by_type": by_type,
             "baseline": baseline, "effect": effect, "per_test": pd.DataFrame(per_test).T,
             "companies": co_tab.sort_values("derivatives", ascending=False), "reach": reach,
-            "by_org": by_org, "roots": roots, "orgs": orgs}
+            "by_org": by_org, "roots": roots, "orgs": orgs,
+            "footprint_by_group": fp_group, "footprint_by_company": fp_company, "hub_downloads": fp_total}
+
+
+def total_footprint(downloads: pd.Series, kids: pd.DataFrame, attr: "Attribution", orgs: pd.DataFrame):
+    """Downloads of a group's own models + downloads of derivatives rooted in its models.
+
+    A model counts once per group (union of "own" and "derived from"), so nothing is double-counted
+    within a group. Across groups, footprints can overlap (e.g. a repackager's GGUF of Qwen counts for
+    both Repackagers and Alibaba's group), so group shares can sum to more than 100%.
+    """
+    hub = downloads.rename("downloads").rename_axis("id").reset_index()
+    hub["owner_type"], hub["owner_org"] = attr.type_and_org_many(hub["id"])
+    hub["root_type"] = hub["id"].map(kids.set_index("id")["root_type"])
+    hub["root_org"] = hub["id"].map(kids.set_index("id")["root_org"])
+    total = hub["downloads"].sum()
+
+    def row(own, via):
+        return {"own_model_downloads": hub.loc[own, "downloads"].sum(),
+                "derivative_downloads_not_own": hub.loc[via & ~own, "downloads"].sum(),
+                "total_footprint": hub.loc[own | via, "downloads"].sum()}
+
+    groups = {g: {g} for g in PUBLISHER_TYPES}
+    groups = {f"{BIG_OR_FRONTIER} (combined)": {BIG_FRONTIER, BIG_ONLY, FRONTIER_ONLY}, **groups}
+    fg = pd.DataFrame({name: row(hub["owner_type"].isin(gs), hub["root_type"].isin(gs))
+                       for name, gs in groups.items()}).T
+    fg["share_of_all_hub_downloads"] = fg["total_footprint"] / total
+
+    fc = pd.DataFrame({org: row(hub["owner_org"] == org, hub["root_org"] == org) for org in orgs.index}).T
+    fc["share_of_all_hub_downloads"] = fc["total_footprint"] / total
+    fc["group"] = [attr.company_group(o) for o in fc.index]
+    fc = fc.sort_values("total_footprint", ascending=False)
+    return fg, fc, total
 
 
 def main():
